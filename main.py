@@ -1,6 +1,5 @@
 import os
 import logging
-from flask import Flask, request
 from telegram import Update
 from telegram.ext import Application, CommandHandler, MessageHandler, filters, ContextTypes
 import yt_dlp
@@ -11,9 +10,6 @@ logger = logging.getLogger(__name__)
 TOKEN = os.environ.get("TELEGRAM_BOT_TOKEN")
 RENDER_EXTERNAL_URL = os.environ.get("RENDER_EXTERNAL_URL")
 PORT = int(os.environ.get("PORT", 8080))
-
-app = Flask(__name__)
-ptb_app = Application.builder().token(TOKEN).build()
 
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
     await update.message.reply_text("Send a link from TikTok, YouTube, Instagram, or X (Twitter) to download.")
@@ -48,25 +44,20 @@ async def handle_download(update: Update, context: ContextTypes.DEFAULT_TYPE):
         if os.path.exists(filename):
             os.remove(filename)
 
-ptb_app.add_handler(CommandHandler("start", start))
-ptb_app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, handle_download))
+def main():
+    ptb_app = Application.builder().token(TOKEN).build()
 
-@app.route("/", methods=["GET"])
-def health_check():
-    return "OK", 200
+    ptb_app.add_handler(CommandHandler("start", start))
+    ptb_app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, handle_download))
 
-@app.route(f"/{TOKEN}", methods=["POST"])
-def webhook():
-    json_str = request.get_data(as_text=True)
-    update = Update.de_json(data=request.get_json(force=True), bot=ptb_app.bot)
-    
-    import asyncio
-    asyncio.run(ptb_app.process_update(update))
-    return "OK", 200
+    # Native webhook handling (binds port and manages event loop internally)
+    ptb_app.run_webhook(
+        listen="0.0.0.0",
+        port=PORT,
+        url_path=TOKEN,
+        webhook_url=f"{RENDER_EXTERNAL_URL}/{TOKEN}"
+    )
 
 if __name__ == "__main__":
-    import asyncio
-    asyncio.run(ptb_app.initialize())
-    asyncio.run(ptb_app.bot.set_webhook(url=f"{RENDER_EXTERNAL_URL}/{TOKEN}"))
-    app.run(host="0.0.0.0", port=PORT)
+    main()
     
